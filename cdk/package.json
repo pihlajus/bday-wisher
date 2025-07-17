@@ -1,0 +1,24 @@
+{
+  "name": "birthday-reminder",
+  "version": "0.1.0",
+  "bin": {
+    "birthday-reminder": "bin/birthday-reminder.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "cdk": "cdk"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "aws-cdk": "^2.1004.0",
+    "ts-node": "^10.9.1",
+    "typescript": "~5.0.0"
+  },
+  "dependencies": {
+    "@aws-cdk/aws-s3": "^1.204.0",
+    "aws-cdk-lib": "2.177.0",
+    "constructs": "^10.0.0",
+    "dotenv": "^16.4.7"
+  }
+}
