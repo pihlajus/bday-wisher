@@ -157,6 +157,20 @@ The application handles timezone differences between UTC and Finland (UTC+2/UTC+
 
 The Lambda function sends birthday messages one day in advance of the actual birthday.
 
+## CI/CD Support
+
+This project includes a GitHub Actions workflow for continuous integration and deployment. On every push to the `master` branch, the workflow will:
+
+- Install Node.js and Go environments
+- Install dependencies for both CDK and Lambda
+- Configure AWS credentials using GitHub secrets
+- Create a `.env` file from repository secrets
+- Deploy the infrastructure using AWS CDK
+
+You can find the workflow definition in `.github/workflows/deploy.yml`. Adjust the workflow as needed for your environment or additional checks.
+
+You must manually add the required secrets (such as `OPENAI_API_KEY`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_PHONE_NUMBER`) to your GitHub repository settings under **Settings > Secrets and variables > Actions** for the CI/CD workflow to function correctly.
+
 ## License
 
 [MIT License](https://opensource.org/license/MIT)
