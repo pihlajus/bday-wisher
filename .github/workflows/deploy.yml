@@ -1,9 +1,10 @@
 name: Deploy to AWS
 
 on:
-  push:
-    branches:
-      - master
+  # Uncomment the following lines to enable automatic deployment on push to master branch
+  #  push:
+  #    branches:
+  #      - master
   workflow_dispatch:
 
 jobs:
