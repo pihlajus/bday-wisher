@@ -62,7 +62,7 @@ func sendSmsMessage(twilioClient *twilio.RestClient, to, message string) error {
 }
 
 func isBirthday(date time.Time) bool {
-	now := time.Now()
+	now := time.Now().Local()
 	return now.Month() == date.Month() && now.Day() == date.Day()
 }
 
@@ -85,8 +85,7 @@ func handleRequest() error {
 
 	// Check for birthdays and send messages
 	for _, friend := range friends {
-		// Subtract one day from the birthday to match the UTC time in the CSV, so that the comparison works
-		birthday := friend.Birthday.AddDate(0, 0, -1)
+		birthday := friend.Birthday
 		if isBirthday(birthday) {
 			// Generate personalized message
 			message, err := generateMessage(openaiClient, friend)
