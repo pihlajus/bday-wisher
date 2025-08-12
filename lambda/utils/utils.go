@@ -24,8 +24,8 @@ const (
 // Friend represents a friend's information.
 type Friend struct {
 	Name        string
-	PhoneNumber string
 	Birthday    time.Time
+	PhoneNumber string
 	Interests   string
 	Prompt      string
 }
@@ -96,7 +96,7 @@ func ParseCSVData(data []byte) ([]Friend, error) {
 		if i == 0 { // Skip header row
 			continue
 		}
-		birthday, err := time.Parse("2006-01-02", record[1])
+		birthday, err := time.ParseInLocation("2006-01-02", record[1], time.Local)
 		if err != nil {
 			return nil, fmt.Errorf("error parsing birthday for row %d: %w", i+1, err)
 		}
