@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
 	"bday-wisher/utils"
@@ -45,7 +44,7 @@ func generateMessage(client *openai.Client, friend utils.Friend) (string, error)
 }
 
 func sendSmsMessage(twilioClient *twilio.RestClient, to, message string) error {
-	fromNumber := os.Getenv("TWILIO_PHONE_NUMBER")
+	fromNumber := utils.GetSecret("SSM_TWILIO_PHONE_NUMBER")
 
 	params := &twilioApi.CreateMessageParams{
 		From: &fromNumber,
@@ -68,10 +67,10 @@ func isBirthday(date time.Time) bool {
 
 func handleRequest() error {
 	// Initialize clients
-	openaiClient := openai.NewClient(os.Getenv(utils.OPENAI_API_KEY))
+	openaiClient := openai.NewClient(utils.GetSecret("SSM_OPENAI_API_KEY"))
 	twilioClient := twilio.NewRestClientWithParams(twilio.ClientParams{
-		Username: os.Getenv(utils.TWILIO_ACCOUNT_SID),
-		Password: os.Getenv(utils.TWILIO_AUTH_TOKEN),
+		Username: utils.GetSecret("SSM_TWILIO_ACCOUNT_SID"),
+		Password: utils.GetSecret("SSM_TWILIO_AUTH_TOKEN"),
 	})
 
 	// Read friends data

@@ -1,18 +1,20 @@
 package main
 
 import (
-	"bday-wisher/utils"
 	"context"
 	"fmt"
-	"github.com/aws/aws-lambda-go/events"
-	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/sashabaranov/go-openai"
-	"github.com/twilio/twilio-go"
-	twilioApi "github.com/twilio/twilio-go/rest/api/v2010"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
+
+	"bday-wisher/utils"
+	"github.com/aws/aws-lambda-go/events"
+	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/sashabaranov/go-openai"
+	"github.com/twilio/twilio-go"
+	twilioClient "github.com/twilio/twilio-go/client"
+	twilioApi "github.com/twilio/twilio-go/rest/api/v2010"
 )
 
 type IncomingMessage struct {
@@ -20,8 +22,8 @@ type IncomingMessage struct {
 	Body string `json:"Body"`
 }
 
-func sendReply(twilioClient *twilio.RestClient, to, message string) error {
-	fromNumber := os.Getenv(utils.TWILIO_PHONE_NUMBER)
+func sendReply(tc *twilio.RestClient, to, message string) error {
+	fromNumber := utils.GetSecret("SSM_TWILIO_PHONE_NUMBER")
 
 	fmt.Printf("Sending response: %s\n", message)
 	params := &twilioApi.CreateMessageParams{
@@ -30,7 +32,7 @@ func sendReply(twilioClient *twilio.RestClient, to, message string) error {
 		Body: &message,
 	}
 
-	_, err := twilioClient.Api.CreateMessage(params)
+	_, err := tc.Api.CreateMessage(params)
 	if err != nil {
 		return fmt.Errorf("error sending SMS message: %w", err)
 	}
@@ -71,10 +73,32 @@ func generateReply(client *openai.Client, incomingMessage IncomingMessage, custo
 }
 
 func handleReplyRequest(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	// Parse the body to extract parameters
+	// Validate Twilio request signature
+	authToken := utils.GetSecret("SSM_TWILIO_AUTH_TOKEN")
+	twilioSignature := request.Headers["X-Twilio-Signature"]
+	if twilioSignature == "" {
+		twilioSignature = request.Headers["x-twilio-signature"]
+	}
+	webhookURL := os.Getenv("TWILIO_WEBHOOK_URL")
+
+	validator := twilioClient.NewRequestValidator(authToken)
+
+	// Parse body params for signature validation
 	bodyValues, err := url.ParseQuery(request.Body)
 	if err != nil {
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest, Body: "Error parsing request body"}, nil
+	}
+
+	params := make(map[string]string)
+	for key, values := range bodyValues {
+		if len(values) > 0 {
+			params[key] = values[0]
+		}
+	}
+
+	if !validator.Validate(webhookURL, params, twilioSignature) {
+		fmt.Println("Invalid Twilio signature - rejecting request")
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusForbidden, Body: "Invalid signature"}, nil
 	}
 
 	// Extract 'From' and 'Body' from the parsed body
@@ -113,7 +137,7 @@ func handleReplyRequest(ctx context.Context, request events.APIGatewayProxyReque
 	}
 
 	// Initialize OpenAI client
-	openaiClient := openai.NewClient(os.Getenv(utils.OPENAI_API_KEY))
+	openaiClient := openai.NewClient(utils.GetSecret("SSM_OPENAI_API_KEY"))
 
 	// Generate a reply using OpenAI
 	replyMessage, err := generateReply(openaiClient, incomingMessage, customPrompt)
@@ -128,13 +152,13 @@ func handleReplyRequest(ctx context.Context, request events.APIGatewayProxyReque
 	fmt.Printf("Sending reply to: %s, message: %s\n", incomingMessage.From, replyMessage)
 
 	// Initialize Twilio client
-	twilioClient := twilio.NewRestClientWithParams(twilio.ClientParams{
-		Username: os.Getenv(utils.TWILIO_ACCOUNT_SID),
-		Password: os.Getenv(utils.TWILIO_AUTH_TOKEN),
+	tc := twilio.NewRestClientWithParams(twilio.ClientParams{
+		Username: utils.GetSecret("SSM_TWILIO_ACCOUNT_SID"),
+		Password: authToken,
 	})
 
 	// Send the reply
-	err = sendReply(twilioClient, incomingMessage.From, replyMessage)
+	err = sendReply(tc, incomingMessage.From, replyMessage)
 	if err != nil {
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, fmt.Errorf("error sending reply to %s: %w", incomingMessage.From, err)
 	}

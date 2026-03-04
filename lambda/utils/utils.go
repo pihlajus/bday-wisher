@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
 )
 
 const (
@@ -20,6 +22,51 @@ const (
 	TWILIO_AUTH_TOKEN   = "TWILIO_AUTH_TOKEN"
 	OPENAI_API_KEY      = "OPENAI_API_KEY"
 )
+
+var (
+	secretCache   = make(map[string]string)
+	secretCacheMu sync.Mutex
+)
+
+// GetSecret reads a secret value. In local mode it returns the env var directly.
+// In Lambda it reads from SSM Parameter Store and caches the result.
+func GetSecret(envKey string) string {
+	if GetIsLocal() {
+		return os.Getenv(envKey)
+	}
+
+	paramName := os.Getenv(envKey)
+	if paramName == "" {
+		return ""
+	}
+
+	secretCacheMu.Lock()
+	defer secretCacheMu.Unlock()
+
+	if val, ok := secretCache[paramName]; ok {
+		return val
+	}
+
+	cfg, err := config.LoadDefaultConfig(context.TODO())
+	if err != nil {
+		fmt.Printf("error loading AWS config for SSM: %v\n", err)
+		return ""
+	}
+
+	client := ssm.NewFromConfig(cfg)
+	result, err := client.GetParameter(context.TODO(), &ssm.GetParameterInput{
+		Name:           aws.String(paramName),
+		WithDecryption: aws.Bool(true),
+	})
+	if err != nil {
+		fmt.Printf("error reading SSM parameter %s: %v\n", paramName, err)
+		return ""
+	}
+
+	val := aws.ToString(result.Parameter.Value)
+	secretCache[paramName] = val
+	return val
+}
 
 // Friend represents a friend's information.
 type Friend struct {

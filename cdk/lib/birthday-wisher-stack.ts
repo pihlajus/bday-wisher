@@ -7,15 +7,7 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as path from 'path';
 import {Bucket} from "aws-cdk-lib/aws-s3";
 import {BucketDeployment, Source} from "aws-cdk-lib/aws-s3-deployment";
-import * as dotenv from 'dotenv';
-import * as fs from "node:fs";
 import {Duration} from "aws-cdk-lib";
-
-const envConfig = dotenv.parse(fs.readFileSync('../.env'));
-
-for (const k in envConfig) {
-    process.env[k] = envConfig[k];
-}
 
 export class BirthdayWisherStack extends cdk.Stack {
     constructor(scope: cdk.App, id: string, props?: cdk.StackProps) {
@@ -41,10 +33,10 @@ export class BirthdayWisherStack extends cdk.Stack {
                 },
             }),
             environment: {
-                OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
-                TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID || '',
-                TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN || '',
-                TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER || '',
+                SSM_OPENAI_API_KEY: '/bday-wisher/openai-api-key',
+                SSM_TWILIO_ACCOUNT_SID: '/bday-wisher/twilio-account-sid',
+                SSM_TWILIO_AUTH_TOKEN: '/bday-wisher/twilio-auth-token',
+                SSM_TWILIO_PHONE_NUMBER: '/bday-wisher/twilio-phone-number',
             },
             timeout: Duration.seconds(30),
             memorySize: 128
@@ -73,6 +65,12 @@ export class BirthdayWisherStack extends cdk.Stack {
         });
         summerRule.addTarget(new targets.LambdaFunction(birthdayHandler));
 
+        // Create an API Gateway to receive Twilio messages
+        const api = new apigateway.RestApi(this, 'TwilioApi', {
+            restApiName: 'Twilio Message API',
+            description: 'API for receiving messages from Twilio.',
+        });
+
         // Create the Lambda function for handling replies
         const replyHandler = new lambda.Function(this, 'ReplyHandler', {
             runtime: lambda.Runtime.PROVIDED_AL2,
@@ -93,22 +91,25 @@ export class BirthdayWisherStack extends cdk.Stack {
                 },
             }),
             environment: {
-                OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
-                TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID || '',
-                TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN || '',
-                TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER || '',
+                SSM_OPENAI_API_KEY: '/bday-wisher/openai-api-key',
+                SSM_TWILIO_ACCOUNT_SID: '/bday-wisher/twilio-account-sid',
+                SSM_TWILIO_AUTH_TOKEN: '/bday-wisher/twilio-auth-token',
+                SSM_TWILIO_PHONE_NUMBER: '/bday-wisher/twilio-phone-number',
+                TWILIO_WEBHOOK_URL: `${api.url}messages`,
             },
             timeout: Duration.seconds(30),
             memorySize: 512
         });
 
-        // Create an API Gateway to receive Twilio messages
-        const api = new apigateway.RestApi(this, 'TwilioApi', {
-            restApiName: 'Twilio Message API',
-            description: 'API for receiving messages from Twilio.',
-        });
-
         dataBucket.grantRead(replyHandler.role!);
+
+        // SSM read access for both Lambdas
+        const ssmPolicy = new iam.PolicyStatement({
+            actions: ['ssm:GetParameter'],
+            resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter/bday-wisher/*`],
+        });
+        birthdayHandler.addToRolePolicy(ssmPolicy);
+        replyHandler.addToRolePolicy(ssmPolicy);
 
         // Create a resource for the incoming messages
         const messages = api.root.addResource('messages');
